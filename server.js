@@ -19,6 +19,9 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // ---------- MongoDB ----------
 const client = new MongoClient(process.env.DB);
 let db;
