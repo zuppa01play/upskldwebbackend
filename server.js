@@ -6,9 +6,9 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4002;
 
-const cors = require("cors");
+// const cors = require("cors");
 
 app.use(cors({
   origin: [
