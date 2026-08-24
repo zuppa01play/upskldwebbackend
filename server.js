@@ -57,7 +57,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Submit the "HomeCreerForm" -> saves into webstudentform collection
-app.post("/api/student-form", async (req, res) => {
+app.post("/student-form", async (req, res) => {
   try {
     const { fullName, phone, email, role } = req.body;
 
