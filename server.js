@@ -8,13 +8,16 @@ import nodemailer from "nodemailer";
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL,
-    credentials: true,
-  })
-);
-app.use(express.json());
+const cors = require("cors");
+
+app.use(cors({
+  origin: [
+    "https://upskldai.com",
+    "https://www.upskldai.com"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
 // ---------- MongoDB ----------
 const client = new MongoClient(process.env.DB);
