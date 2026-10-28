@@ -70,6 +70,79 @@ function verifyToken(req, res, next) {
 }
 
 const PHONE_REGEX = /^[0-9]{10}$/;
+
+// user typed text goes into the email HTML -> escape it
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+// only these audience values + detail keys are accepted from the form
+const AUDIENCES = ["Small Business", "Working Professionals", "Students"];
+const DETAIL_KEYS = { businessType: "Type of business", jobRole: "Your role", college: "College / course" };
+
+// "+91 98765 43210" -> "9876543210"
+const normalizePhone = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length > 10 && digits.startsWith("91") ? digits.slice(-10) : digits;
+};
+
+function buildThankYouMail(doc) {
+  const name = escapeHtml(doc.fullName.split(" ")[0] || doc.fullName);
+
+  const html = `
+    <div style="background:#f6f1ff;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#0f0a2a;">
+      <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+
+        <div style="background:linear-gradient(100deg,#40159f,#7a1fc4);padding:22px 28px;color:#ffffff;">
+          <div style="font-size:22px;font-weight:800;letter-spacing:1px;">
+            UPSKLD
+          </div>
+        </div>
+
+        <div style="padding:28px;">
+          <h2 style="margin:0 0 16px;font-size:20px;">
+            Thank you for reaching out to UPSKLD, ${name}!
+          </h2>
+
+          <p style="margin:0;font-size:15px;line-height:1.7;color:#3d3957;">
+            Thank you for contacting UPSKLD. We have received your request,
+            and our team will reach out to you shortly.
+          </p>
+
+          <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#3d3957;">
+            Thank you for your interest in UPSKLD!
+          </p>
+
+          <p style="margin:18px 0 0;font-size:14px;color:#3d3957;">
+            Warm regards,<br />
+            <b>Team UPSKLD</b><br />
+            <a href="https://upskldai.com" style="color:#4a1a9e;">
+              upskldai.com
+            </a>
+          </p>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  const text = `Thank you for reaching out to UPSKLD, ${name}!
+
+Thank you for contacting UPSKLD. We have received your request, and our team will reach out to you shortly.
+
+Thank you for your interest in UPSKLD!
+
+Warm regards,
+Team UPSKLD
+https://upskldai.com`;
+
+  return { html, text };
+}
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------- Routes ----------
@@ -82,7 +155,17 @@ app.get("/api/health", (req, res) => {
 // Submit the "HomeCreerForm" -> saves into webstudentform collection
 async function submitStudentForm(req, res) {
   try {
-    const { fullName, phone, email, role } = req.body || {};
+    const {
+      fullName,
+      phone,
+      email,
+      role,
+      city,
+      audience,
+      detailLabel,
+      detailKey,
+      detail,
+    } = req.body || {};
 
     if (!fullName || !phone || !email) {
       return res.status(400).json({
@@ -91,7 +174,7 @@ async function submitStudentForm(req, res) {
       });
     }
 
-    const cleanPhone = String(phone).trim();
+    const cleanPhone = normalizePhone(phone);
     const cleanEmail = String(email).trim().toLowerCase();
 
     if (!PHONE_REGEX.test(cleanPhone)) {
@@ -108,31 +191,60 @@ async function submitStudentForm(req, res) {
       });
     }
 
+    // extra input: Type of business / Your role / College / course (depends on the header tab)
+    const cleanDetailKey = Object.prototype.hasOwnProperty.call(DETAIL_KEYS, detailKey)
+      ? detailKey
+      : "";
+    const cleanDetail = String(detail || "").trim().slice(0, 120);
+
     const doc = {
-      fullName: String(fullName).trim(),
+      fullName: String(fullName).trim().slice(0, 100),
       phone: cleanPhone,
       email: cleanEmail,
-      role: role || "Working professional",
+      role: String(role || "Working professional").trim().slice(0, 60),
+      city: String(city || "").trim().slice(0, 80),
+      audience: AUDIENCES.includes(audience) ? audience : "",
+      detailLabel: cleanDetailKey ? DETAIL_KEYS[cleanDetailKey] : String(detailLabel || "").slice(0, 40),
+      detail: cleanDetail,
       createdAt: new Date(),
     };
+    // also keep it under its own field: businessType / jobRole / college
+    if (cleanDetailKey) doc[cleanDetailKey] = cleanDetail;
 
     const result = await db.collection("webstudentform").insertOne(doc);
 
-    // Fire-and-forget notification email — don't fail the request if this errors
+    // Emails are fire-and-forget — the request must not fail if mail fails
+    // 1) notification for the UPSKLD team
     transporter
       .sendMail({
         from: `"UPSKLD Website" <${process.env.EMAIL}>`,
         to: process.env.EMAIL,
-        subject: "New Career Counselling Request",
+        replyTo: doc.email,
+        subject: `New Free Session Request${doc.audience ? ` · ${doc.audience}` : ""}`,
         text: `New submission received:
 
 Name: ${doc.fullName}
 Phone: ${doc.phone}
 Email: ${doc.email}
-Role: ${doc.role}
+I am a: ${doc.role}
+Tab: ${doc.audience || "-"}
+${doc.detailLabel || "Detail"}: ${doc.detail || "-"}
+City: ${doc.city || "-"}
 Submitted at: ${doc.createdAt.toLocaleString()}`,
       })
-      .catch((err) => console.error("Email send failed:", err.message));
+      .catch((err) => console.error("Team email failed:", err.message));
+
+    // 2) thank-you mail for the person who submitted the form
+    const thanks = buildThankYouMail(doc);
+    transporter
+      .sendMail({
+        from: `"UPSKLD" <${process.env.EMAIL}>`,
+        to: doc.email,
+        subject: "Thank you for reaching out to UPSKLD",
+        text: thanks.text,
+        html: thanks.html,
+      })
+      .catch((err) => console.error("Thank-you email failed:", err.message));
 
     res.status(201).json({ success: true, id: result.insertedId });
   } catch (err) {
