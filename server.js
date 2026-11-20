@@ -1,9 +1,16 @@
+
 // import "dotenv/config";
 // import express from "express";
 // import cors from "cors";
+// import path from "path";
+// import fs from "fs";
+// import { fileURLToPath } from "url";
 // import { MongoClient, ObjectId } from "mongodb";
 // import jwt from "jsonwebtoken";
 // import nodemailer from "nodemailer";
+
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
 // const app = express();
 // const PORT = process.env.PORT || 4002;
@@ -384,6 +391,36 @@
 //   }
 // });
 
+// // ---------- Frontend build (React) ----------
+// // API routes ellam MELA irukku. Static + catch-all ALWAYS kadaisila.
+// // Server file backend/ folder la irundha: ../frontend/build
+// // Vera location na .env la FRONTEND_BUILD_PATH set pannunga
+// const buildPath =
+//   process.env.FRONTEND_BUILD_PATH || path.join(__dirname, "..", "frontend", "build");
+
+// if (fs.existsSync(path.join(buildPath, "index.html"))) {
+//   // robots.txt, sitemap.xml, llms.txt + react-snap prerendered pages inga irundhu serve aagum
+//   app.use(express.static(buildPath));
+
+//   // react-snap 200.html create pannum (empty SPA shell). Illana index.html use pannum
+//   const spaFallback = fs.existsSync(path.join(buildPath, "200.html"))
+//     ? path.join(buildPath, "200.html")
+//     : path.join(buildPath, "index.html");
+
+//   // SPA fallback: unknown GET routes -> React app. /api paths ku JSON 404
+//   app.use((req, res, next) => {
+//     if (req.method !== "GET" && req.method !== "HEAD") return next();
+//     if (req.path.startsWith("/api/")) {
+//       return res.status(404).json({ success: false, message: "Not found" });
+//     }
+//     res.sendFile(spaFallback);
+//   });
+
+//   console.log("Serving frontend build from:", buildPath);
+// } else {
+//   console.log("Frontend build not found at:", buildPath, "(API-only mode, nginx serving frontend na idhu normal)");
+// }
+
 // // ---------- Start ----------
 // connectDB()
 //   .then(() => {
@@ -393,6 +430,8 @@
 //     console.error("Failed to connect to MongoDB:", err.message);
 //     process.exit(1);
 //   });
+
+
 
 
 
@@ -548,6 +587,60 @@ https://upskldai.com`;
 }
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// ---------- Bootcamp config ----------
+const BOOTCAMP_DATE = "December 2026"; // exact date theriyum pothu maathikonga
+
+
+// Thank-you mail that goes to the student after bootcamp registration
+function buildBootcampThankYouMail(doc) {
+  const name = escapeHtml(doc.fullName.split(" ")[0] || doc.fullName);
+
+  const html = `
+  <div style="background:#f6f1ff;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#0f0a2a;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(64,21,159,.12);">
+      <div style="background:linear-gradient(100deg,#40159f,#7a1fc4);padding:22px 28px;color:#ffffff;">
+        <div style="font-size:22px;font-weight:800;letter-spacing:1px;">UPSKLD</div>
+        <div style="font-size:12px;opacity:.85;margin-top:2px;">AI for growth</div>
+      </div>
+      <div style="padding:28px;">
+        <h2 style="margin:0 0 12px;font-size:20px;">Thank you for registering, ${name}!</h2>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#3d3957;">
+          Your registration for the <b>UPSKLD AI Bootcamp</b> is received.
+          Our team will reach out to you <b>shortly</b> on WhatsApp, email or phone with the next steps.
+        </p>
+        <table style="font-size:14px;margin:0 0 18px;border-collapse:collapse;">
+          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">Name</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(doc.fullName)}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">Phone</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(doc.phone)}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">College</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(doc.college)}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">Bootcamp date</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(BOOTCAMP_DATE)}</td></tr>
+        </table>
+        <p style="margin:18px 0 0;font-size:14px;color:#3d3957;">Warm regards,<br /><b>Team UPSKLD</b><br />
+          <a href="https://upskldai.com" style="color:#4a1a9e;">upskldai.com</a></p>
+      </div>
+      <div style="padding:14px 28px;background:#faf7ff;font-size:11.5px;color:#8a86a0;">
+        You are receiving this email because you registered for the bootcamp on upskldai.com.
+        A brand of Impactree Data Technologies.
+      </div>
+    </div>
+  </div>`;
+
+  const text = `Thank you for registering, ${doc.fullName}!
+
+Your registration for the UPSKLD AI Bootcamp is received. Our team will reach out to you shortly on WhatsApp, email or phone with the next steps.
+
+Name: ${doc.fullName}
+Phone: ${doc.phone}
+College: ${doc.college}
+
+Bootcamp date: ${BOOTCAMP_DATE}
+
+Warm regards,
+Team UPSKLD
+https://upskldai.com`;
+
+  return { html, text };
+}
+
 // ---------- Routes ----------
 
 // Health check
@@ -658,6 +751,99 @@ Submitted at: ${doc.createdAt.toLocaleString()}`,
 
 // rendu path-um work aagum (nginx /api strip pannalum pannalum problem illa)
 app.post(["/student-form", "/api/student-form"], submitStudentForm);
+
+// ---------- Bootcamp registration -> webbootcamp collection ----------
+async function submitBootcampRegistration(req, res) {
+  try {
+    const { fullName, email, phone, college } = req.body || {};
+
+    if (!fullName || !email || !phone || !college ) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
+    const cleanPhone = normalizePhone(phone);
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    if (!PHONE_REGEX.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number must be exactly 10 digits",
+      });
+    }
+
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid email address",
+      });
+    }
+
+ 
+
+    // same email la already register panniruntha
+    const existing = await db.collection("webbootcamp").findOne({ email: cleanEmail });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "This email is already registered for the bootcamp",
+      });
+    }
+
+    const doc = {
+      fullName: String(fullName).trim().slice(0, 100),
+      email: cleanEmail,
+      phone: cleanPhone,
+      college: String(college).trim().slice(0, 150),
+
+      bootcampDate: BOOTCAMP_DATE,
+      createdAt: new Date(),
+    };
+
+    const result = await db.collection("webbootcamp").insertOne(doc);
+
+    // Emails are fire-and-forget — the request must not fail if mail fails
+    // 1) registration details -> UPSKLD team
+    transporter
+      .sendMail({
+        from: `"UPSKLD Website" <${process.env.EMAIL}>`,
+        to: process.env.EMAIL,
+        replyTo: doc.email,
+       
+        text: `New bootcamp registration received:
+
+Name: ${doc.fullName}
+Email: ${doc.email}
+Phone: ${doc.phone}
+College: ${doc.college}
+
+Bootcamp date: ${doc.bootcampDate}
+Submitted at: ${doc.createdAt.toLocaleString()}`,
+      })
+      .catch((err) => console.error("Bootcamp team email failed:", err.message));
+
+    // 2) thank-you mail -> student
+    const thanks = buildBootcampThankYouMail(doc);
+    transporter
+      .sendMail({
+        from: `"UPSKLD" <${process.env.EMAIL}>`,
+        to: doc.email,
+        subject: "Thank you for registering · UPSKLD AI Bootcamp",
+        text: thanks.text,
+        html: thanks.html,
+      })
+      .catch((err) => console.error("Bootcamp thank-you email failed:", err.message));
+
+    res.status(201).json({ success: true, id: result.insertedId });
+  } catch (err) {
+    console.error("Bootcamp register error:", err);
+    res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+}
+
+app.post(["/bootcamp-register", "/api/bootcamp-register"], submitBootcampRegistration);
 
 // ---------- Footer "Enquire" popup (EnquirePage) -> webenquiries collection ----------
 async function submitEnquiry(req, res) {
