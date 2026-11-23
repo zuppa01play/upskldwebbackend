@@ -151,7 +151,7 @@ https://upskldai.com`;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------- Bootcamp config ----------
-const BOOTCAMP_DATE = "December 2026"; // exact date theriyum pothu maathikonga
+const BOOTCAMP_DATE = "05 December 2026"; // exact date maathanumna inga maathunga
 
 
 // Thank-you mail that goes to the student after bootcamp registration
