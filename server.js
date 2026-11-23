@@ -157,7 +157,7 @@ https://upskldai.com`;
 }
 
 // ---------- Bootcamp config ----------
-const BOOTCAMP_DATE = "05 December 2026"; // exact date maathanumna inga maathunga
+const BOOTCAMP_DATE = "05 December 2026"; // exact date theriyum pothu maathikonga
 
 // Thank-you mail that goes to the student after bootcamp registration
 function buildBootcampThankYouMail(doc) {
@@ -542,7 +542,47 @@ Submitted at: ${doc.createdAt.toLocaleString()}`,
 }
 app.post(["/enquiry", "/api/enquiry"], submitEnquiry);
 
-// --- Admin (optional, uses JWT_SECRET) ---
+
+// ---------- Razorpay ----------
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// Create order
+app.post(["/payment/create-order", "/api/payment/create-order"], async (req, res) => {
+  try {
+    const { amount, currency = "INR", receipt } = req.body || {};
+    if (!amount || isNaN(amount) || Number(amount) < 1) {
+      return res.status(400).json({ success: false, message: "Minimum order amount is ₹1" });
+    }
+    const order = await razorpay.orders.create({
+      amount: Math.round(Number(amount) * 100),  // convert ₹ -> paise
+      currency,
+      receipt: receipt || `rcpt_${Date.now()}`,
+    });
+    res.json({ success: true, order });
+  } catch (err) {
+    console.error("Razorpay create-order error:", err);
+    res.status(500).json({ success: false, message: "Could not create order" });
+  }
+});
+
+// Verify payment signature
+app.post(["/payment/verify", "/api/payment/verify"], (req, res) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ success: false, message: "Missing payment fields" });
+  }
+  const expected = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+    .digest("hex");
+  if (expected !== razorpay_signature) {
+    return res.status(400).json({ success: false, message: "Payment verification failed" });
+  }
+  res.json({ success: true, message: "Payment verified" });
+});
 
 // TODO: replace this with a real admin user check (DB-backed, hashed password)
 app.post("/api/admin/login", (req, res) => {
