@@ -152,7 +152,7 @@ https://upskldai.com`;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------- Bootcamp config ----------
-const BOOTCAMP_DATE = "December 2026"; // exact date theriyum pothu maathikonga
+const BOOTCAMP_DATE = "05 December 2026"; // exact date theriyum pothu maathikonga
 
 
 // Thank-you mail that goes to the student after bootcamp registration
@@ -507,11 +507,11 @@ const razorpay = new Razorpay({
 app.post(["/payment/create-order", "/api/payment/create-order"], async (req, res) => {
   try {
     const { amount, currency = "INR", receipt } = req.body || {};
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
-      return res.status(400).json({ success: false, message: "Valid amount is required" });
+    if (!amount || isNaN(amount) || Number(amount) < 1) {
+      return res.status(400).json({ success: false, message: "Minimum order amount is ₹1" });
     }
     const order = await razorpay.orders.create({
-      amount: Math.round(Number(amount)),   // paise (e.g. 49900 = ₹499)
+      amount: Math.round(Number(amount) * 100),  // convert ₹ -> paise
       currency,
       receipt: receipt || `rcpt_${Date.now()}`,
     });
