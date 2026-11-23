@@ -20,6 +20,8 @@ const PORT = process.env.PORT || 4002;
 const allowedOrigins = [
   "https://upskldai.com",
   "https://www.upskldai.com",
+  "http://localhost:4200",
+  "http://127.0.0.1:4200",
   // local development
   "http://localhost:3000",
   "http://localhost:5173",
