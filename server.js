@@ -7,8 +7,6 @@ import { fileURLToPath } from "url";
 import { MongoClient, ObjectId } from "mongodb";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import Razorpay from "razorpay";
-import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -78,6 +76,7 @@ function verifyToken(req, res, next) {
 }
 
 const PHONE_REGEX = /^[0-9]{10}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // user typed text goes into the email HTML -> escape it
 const escapeHtml = (value) =>
@@ -97,6 +96,13 @@ const normalizePhone = (value) => {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length > 10 && digits.startsWith("91") ? digits.slice(-10) : digits;
 };
+
+// one aligned row for the bootcamp mails (value must be escaped by the caller)
+const mailRow = (label, value) => `
+          <tr>
+            <td style="padding:10px 14px 10px 0;width:130px;vertical-align:top;font-size:14px;color:#6b6685;border-bottom:1px solid #efedf7;">${label}</td>
+            <td style="padding:10px 0;vertical-align:top;font-size:14px;font-weight:600;color:#0f0a2a;border-bottom:1px solid #efedf7;word-break:break-word;">${value}</td>
+          </tr>`;
 
 // "Thank you for reaching out" mail that goes to the person who filled the form
 function buildThankYouMail(doc) {
@@ -149,11 +155,9 @@ https://upskldai.com`;
 
   return { html, text };
 }
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------- Bootcamp config ----------
 const BOOTCAMP_DATE = "05 December 2026"; // exact date maathanumna inga maathunga
-
 
 // Thank-you mail that goes to the student after bootcamp registration
 function buildBootcampThankYouMail(doc) {
@@ -167,21 +171,21 @@ function buildBootcampThankYouMail(doc) {
         <div style="font-size:12px;opacity:.85;margin-top:2px;">AI for growth</div>
       </div>
       <div style="padding:28px;">
-        <h2 style="margin:0 0 12px;font-size:20px;">Thank you for registering, ${name}!</h2>
-        <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#3d3957;">
+        <h2 style="margin:0 0 12px;font-size:20px;line-height:1.3;">Thank you for registering, ${name}!</h2>
+        <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#3d3957;">
           Your registration for the <b>UPSKLD AI Bootcamp</b> is received.
           Our team will reach out to you <b>shortly</b> on WhatsApp, email or phone with the next steps.
         </p>
-        <table style="font-size:14px;margin:0 0 18px;border-collapse:collapse;">
-          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">Name</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(doc.fullName)}</td></tr>
-          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">Phone</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(doc.phone)}</td></tr>
-          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">College</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(doc.college)}</td></tr>
-          <tr><td style="padding:4px 12px 4px 0;color:#6b6685;">Bootcamp date</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(BOOTCAMP_DATE)}</td></tr>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 20px;">
+          ${mailRow("Name", escapeHtml(doc.fullName))}
+          ${mailRow("Phone", escapeHtml(doc.phone))}
+          ${mailRow("College", escapeHtml(doc.college))}
+          ${mailRow("Bootcamp date", escapeHtml(BOOTCAMP_DATE))}
         </table>
-        <p style="margin:18px 0 0;font-size:14px;color:#3d3957;">Warm regards,<br /><b>Team UPSKLD</b><br />
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#3d3957;">Warm regards,<br /><b>Team UPSKLD</b><br />
           <a href="https://upskldai.com" style="color:#4a1a9e;">upskldai.com</a></p>
       </div>
-      <div style="padding:14px 28px;background:#faf7ff;font-size:11.5px;color:#8a86a0;">
+      <div style="padding:14px 28px;background:#faf7ff;font-size:11.5px;line-height:1.5;color:#8a86a0;">
         You are receiving this email because you registered for the bootcamp on upskldai.com.
         A brand of Impactree Data Technologies.
       </div>
@@ -195,12 +199,62 @@ Your registration for the UPSKLD AI Bootcamp is received. Our team will reach ou
 Name: ${doc.fullName}
 Phone: ${doc.phone}
 College: ${doc.college}
-
 Bootcamp date: ${BOOTCAMP_DATE}
 
 Warm regards,
 Team UPSKLD
 https://upskldai.com`;
+
+  return { html, text };
+}
+
+// Notification mail that goes to the UPSKLD team for every bootcamp registration
+function buildBootcampTeamMail(doc) {
+  const submittedAt = doc.createdAt.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const emailLink = `<a href="mailto:${escapeHtml(doc.email)}" style="color:#4a1a9e;text-decoration:none;">${escapeHtml(doc.email)}</a>`;
+
+  const html = `
+  <div style="background:#f6f1ff;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#0f0a2a;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(64,21,159,.12);">
+      <div style="background:linear-gradient(100deg,#40159f,#7a1fc4);padding:22px 28px;color:#ffffff;">
+        <div style="font-size:22px;font-weight:800;letter-spacing:1px;">UPSKLD</div>
+        <div style="font-size:12px;opacity:.85;margin-top:2px;">AI Bootcamp</div>
+      </div>
+      <div style="padding:28px;">
+        <h2 style="margin:0 0 8px;font-size:20px;line-height:1.3;">New bootcamp registration received</h2>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#6b6685;">
+          A new student has registered for the UPSKLD AI Bootcamp. Details are below.
+        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 20px;">
+          ${mailRow("Name", escapeHtml(doc.fullName))}
+          ${mailRow("Email", emailLink)}
+          ${mailRow("Phone", escapeHtml(doc.phone))}
+          ${mailRow("College", escapeHtml(doc.college))}
+          ${mailRow("Bootcamp date", escapeHtml(doc.bootcampDate))}
+          ${mailRow("Submitted at", escapeHtml(submittedAt) + " IST")}
+        </table>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#6b6685;">
+          Tip: hit <b>Reply</b> to write directly to the student.
+        </p>
+      </div>
+      <div style="padding:14px 28px;background:#faf7ff;font-size:11.5px;line-height:1.5;color:#8a86a0;">
+        Automated notification from upskldai.com/bootcamp.
+      </div>
+    </div>
+  </div>`;
+
+  const text = `New bootcamp registration received
+
+Name: ${doc.fullName}
+Email: ${doc.email}
+Phone: ${doc.phone}
+College: ${doc.college}
+Bootcamp date: ${doc.bootcampDate}
+Submitted at: ${submittedAt} IST`;
 
   return { html, text };
 }
@@ -321,7 +375,7 @@ async function submitBootcampRegistration(req, res) {
   try {
     const { fullName, email, phone, college } = req.body || {};
 
-    if (!fullName || !email || !phone || !college ) {
+    if (!fullName || !email || !phone || !college) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
@@ -345,8 +399,6 @@ async function submitBootcampRegistration(req, res) {
       });
     }
 
- 
-
     // same email la already register panniruntha
     const existing = await db.collection("webbootcamp").findOne({ email: cleanEmail });
     if (existing) {
@@ -361,7 +413,6 @@ async function submitBootcampRegistration(req, res) {
       email: cleanEmail,
       phone: cleanPhone,
       college: String(college).trim().slice(0, 150),
-
       bootcampDate: BOOTCAMP_DATE,
       createdAt: new Date(),
     };
@@ -370,21 +421,15 @@ async function submitBootcampRegistration(req, res) {
 
     // Emails are fire-and-forget — the request must not fail if mail fails
     // 1) registration details -> UPSKLD team
+    const teamMail = buildBootcampTeamMail(doc);
     transporter
       .sendMail({
         from: `"UPSKLD Website" <${process.env.EMAIL}>`,
         to: process.env.EMAIL,
         replyTo: doc.email,
-       
-        text: `New bootcamp registration received:
-
-Name: ${doc.fullName}
-Email: ${doc.email}
-Phone: ${doc.phone}
-College: ${doc.college}
-
-Bootcamp date: ${doc.bootcampDate}
-Submitted at: ${doc.createdAt.toLocaleString()}`,
+        subject: "New bootcamp registration received",
+        text: teamMail.text,
+        html: teamMail.html,
       })
       .catch((err) => console.error("Bootcamp team email failed:", err.message));
 
@@ -496,47 +541,6 @@ Submitted at: ${doc.createdAt.toLocaleString()}`,
   }
 }
 app.post(["/enquiry", "/api/enquiry"], submitEnquiry);
-
-// ---------- Razorpay ----------
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
-
-// Create order
-app.post(["/payment/create-order", "/api/payment/create-order"], async (req, res) => {
-  try {
-    const { amount, currency = "INR", receipt } = req.body || {};
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
-      return res.status(400).json({ success: false, message: "Valid amount is required" });
-    }
-    const order = await razorpay.orders.create({
-      amount: Math.round(Number(amount)),   // paise (e.g. 49900 = ₹499)
-      currency,
-      receipt: receipt || `rcpt_${Date.now()}`,
-    });
-    res.json({ success: true, order });
-  } catch (err) {
-    console.error("Razorpay create-order error:", err);
-    res.status(500).json({ success: false, message: "Could not create order" });
-  }
-});
-
-// Verify payment signature
-app.post(["/payment/verify", "/api/payment/verify"], (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-    return res.status(400).json({ success: false, message: "Missing payment fields" });
-  }
-  const expected = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest("hex");
-  if (expected !== razorpay_signature) {
-    return res.status(400).json({ success: false, message: "Payment verification failed" });
-  }
-  res.json({ success: true, message: "Payment verified" });
-});
 
 // --- Admin (optional, uses JWT_SECRET) ---
 
