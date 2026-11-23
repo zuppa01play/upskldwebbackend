@@ -7,6 +7,8 @@ import { fileURLToPath } from "url";
 import { MongoClient, ObjectId } from "mongodb";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import Razorpay from "razorpay";
+import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
