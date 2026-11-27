@@ -511,9 +511,9 @@ async function submitBootcampRegistration(req, res) {
       return res.status(400).json({ success: false, message: "Invalid category" });
     }
 
+    const isFree = req.body.isFree === true || req.body.isFree === "true";
     const col = db.collection("webbootcamp");
 
-  
     const alreadyRegistered = await col.findOne({ email: cleanEmail, payment: { $ne: false } });
     if (alreadyRegistered) {
       return res.status(409).json({
@@ -521,24 +521,25 @@ async function submitBootcampRegistration(req, res) {
         message: "This email is already registered for the bootcamp",
       });
     }
+
     const now = new Date();
+    const docFields = {
+      fullName: String(fullName).trim().slice(0, 100),
+      phone: cleanPhone,
+      college: String(college).trim().slice(0, 150),
+      category: cleanCategory,
+      bootcampDate: BOOTCAMP_DATE,
+      payment: isFree ? true : false,
+      updatedAt: now,
+      ...(isFree && { paidAt: now, amountPaid: 0, paymentId: "free" }),
+    };
+
     let saved;
     try {
       saved = unwrap(
         await col.findOneAndUpdate(
           { email: cleanEmail, payment: false },
-          {
-            $set: {
-              fullName: String(fullName).trim().slice(0, 100),
-              phone: cleanPhone,
-              college: String(college).trim().slice(0, 150),
-              category: cleanCategory,
-              bootcampDate: BOOTCAMP_DATE,
-              payment: false,
-              updatedAt: now,
-            },
-            $setOnInsert: { createdAt: now },
-          },
+          { $set: docFields, $setOnInsert: { createdAt: now } },
           { upsert: true, returnDocument: "after" }
         )
       );
@@ -554,6 +555,31 @@ async function submitBootcampRegistration(req, res) {
       } else {
         throw err;
       }
+    }
+
+    if (isFree) {
+      const teamMail = buildBootcampTeamMail(saved);
+      transporter
+        .sendMail({
+          from: `"UPSKLD Website" <${process.env.EMAIL}>`,
+          to: process.env.EMAIL,
+          replyTo: saved.email,
+          subject: "New bootcamp registration (free)",
+          text: teamMail.text,
+          html: teamMail.html,
+        })
+        .catch((err) => console.error("Bootcamp team email failed:", err.message));
+
+      const thanks = buildBootcampThankYouMail(saved);
+      transporter
+        .sendMail({
+          from: `"UPSKLD" <${process.env.EMAIL}>`,
+          to: saved.email,
+          subject: "Thank you for registering · UPSKLD AI Bootcamp",
+          text: thanks.text,
+          html: thanks.html,
+        })
+        .catch((err) => console.error("Bootcamp thank-you email failed:", err.message));
     }
 
     res.status(201).json({ success: true, id: saved._id });
